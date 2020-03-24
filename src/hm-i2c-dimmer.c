@@ -21,6 +21,8 @@
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/i2c.h>
 
+#include "gamma.h"
+
 #define BASE_PERIOD_LEN 100
 
 #define I2C_ADDRESS 0x32
@@ -201,7 +203,7 @@ void i2c1_ev_isr(void)
 		}
 		else if (i2c_state == I2C_REGISTER_SET)
 		{
-			pwm_channels[i2c_register].value = i2c_get_data(I2C1);
+			pwm_channels[i2c_register].value = gamma8[i2c_get_data(I2C1)];
 		} 
 		else
 		{
