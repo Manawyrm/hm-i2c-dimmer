@@ -5,7 +5,6 @@
 #include <libopencm3/stm32/i2c.h>
 
 #define BASE_PERIOD_LEN 100
-#define PWM_CHANNEL_COUNT 2
 
 #define I2C_ADDRESS 0x32
 
@@ -26,20 +25,30 @@ typedef struct
 	uint8_t value;
 } pwm_chan_t;
 
-pwm_chan_t pwm_channels[PWM_CHANNEL_COUNT] = {
-	{GPIOC, GPIO13, 0},
-	{GPIOA, GPIO6, 0},
+pwm_chan_t pwm_channels[] = {
+	{GPIOB, GPIO12, 0},
+	{GPIOB, GPIO13, 0},
+	{GPIOB, GPIO14, 0},
+	{GPIOB, GPIO15, 0},
+
+	{GPIOA, GPIO8,  0},
+	{GPIOA, GPIO9,  0},
+	{GPIOA, GPIO10, 0},
+	{GPIOA, GPIO11, 0},
+	{GPIOA, GPIO12, 0},
 };
+
+#define PWM_CHANNEL_COUNT (sizeof(pwm_channels)/sizeof(*pwm_channels))
 
 static void i2c_slave_init(uint8_t slave_address)
 {
 	nvic_enable_irq(NVIC_I2C1_EV_IRQ);
 
-	// configure i2c pins
+	/* Configure I2C GPIO pins */
 	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN,
-			 GPIO_I2C1_SDA); //PB7
+			 GPIO_I2C1_SDA); /* PB7 */ 
 	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN,
-			 GPIO_I2C1_SCL); //PB6
+			 GPIO_I2C1_SCL); /* PB6 */ 
 
 	i2c_reset(I2C1);	
 	i2c_peripheral_disable(I2C1);
@@ -49,28 +58,26 @@ static void i2c_slave_init(uint8_t slave_address)
 	i2c_enable_interrupt(I2C1, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN);
 	i2c_peripheral_enable(I2C1);
 
-	// slave needs to acknowledge on receiving bytes
-	// set it after enabling Peripheral i.e. PE = 1
 	i2c_enable_ack(I2C1);
 }
 
 static void clock_setup(void)
 {
-	// Set STM32 to 72 MHz.
+	/* Set STM32 to 72 MHz. */
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
-	// Enable GPIO A-C clock.
+	/* Enable GPIO A-C clock. */
 	rcc_periph_clock_enable(RCC_GPIOA);
 	rcc_periph_clock_enable(RCC_GPIOB);
 	rcc_periph_clock_enable(RCC_GPIOC);
 
-	// Enable I2C clock.
+	/* Enable I2C clock. */
 	rcc_periph_clock_enable(RCC_I2C1);
 }
 
 static void gpio_setup(void)
 {
-	for (int i = 0; i < PWM_CHANNEL_COUNT; ++i)
+	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i)
 	{
 		/* Set PWM output GPIO to 'output push-pull'. */
 		gpio_set_mode(pwm_channels[i].port, GPIO_MODE_OUTPUT_50_MHZ,
@@ -134,8 +141,8 @@ void tim2_isr(void)
 
 		timer_set_period(TIM2, BASE_PERIOD_LEN << pwm_bit);
 
-		for (int i = 0; i < PWM_CHANNEL_COUNT; ++i) {
-			if (!(pwm_channels[i].value & (1 << pwm_bit))) {
+		for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i) {
+			if (pwm_channels[i].value & (1 << pwm_bit)) {
 				gpio_set(pwm_channels[i].port, pwm_channels[i].pin);
 			} else {
 				gpio_clear(pwm_channels[i].port, pwm_channels[i].pin);
@@ -150,18 +157,18 @@ void i2c1_ev_isr(void)
 
 	sr1 = I2C_SR1(I2C1);
 
-	// Address matched (Slave)
+	/* Address matched (Slave) */
 	if (sr1 & I2C_SR1_ADDR)
 	{
-		// Clear the ADDR sequence by reading SR2.
+		/* Clear the ADDR sequence by reading SR2. */
 		i2c_state = I2C_START; 
 		sr2 = I2C_SR2(I2C1);
 		(void) sr2;
 	}
-	// Receive buffer not empty
+	/* Receive buffer not empty */
 	else if (sr1 & I2C_SR1_RxNE)
 	{
-		// Read register address
+		/* Read register address */
 		if (i2c_state == I2C_START)
 		{
 			uint8_t tmp = i2c_get_data(I2C1);
@@ -181,11 +188,11 @@ void i2c1_ev_isr(void)
 		} 
 		else
 		{
-			// discard data
+			/* discard data */
 			i2c_get_data(I2C1);
 		}
 	}
-	// Transmit buffer empty & Data byte transfer not finished
+	/* Transmit buffer empty & Data byte transfer not finished */
 	else if ((sr1 & I2C_SR1_TxE) && !(sr1 & I2C_SR1_BTF))
 	{
 		if (i2c_state == I2C_START)
@@ -193,14 +200,16 @@ void i2c1_ev_isr(void)
 			i2c_send_data(I2C1, pwm_channels[i2c_register].value);
 		}
 	}
-	// done by master by sending STOP
-	//this event happens when slave is in Recv mode at the end of communication
+	/* 
+	 * master sent STOP 
+	 * his event happens when slave is in Recv mode at the end of communication
+	 */
 	else if (sr1 & I2C_SR1_STOPF)
 	{
 		i2c_peripheral_enable(I2C1);
 		i2c_state = I2C_STOP;
 	}
-	//this event happens when slave is in transmit mode at the end of communication
+	/* this event happens when slave is in transmit mode at the end of communication */
 	else if (sr1 & I2C_SR1_AF)
 	{
 		I2C_SR1(I2C1) &= ~(I2C_SR1_AF);
@@ -214,14 +223,8 @@ int main(void)
 	timer_setup();
 	i2c_slave_init(I2C_ADDRESS);
 
-	while (1) {
-		for (int i = 0; i < 1000000; i++)	/* Wait a bit. */
-			__asm__("nop");
-		
-		/*for (int i = 0; i < PWM_CHANNEL_COUNT; ++i)
-		{
-			pwm_channels[i].value++;
-		}*/
+	while (1)
+	{
 	}
 
 	return 0;
