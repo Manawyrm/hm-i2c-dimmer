@@ -4,26 +4,39 @@
 #include <libopencm3/stm32/timer.h>
 
 #define BASE_PERIOD_LEN 100
+#define PWM_CHANNEL_COUNT 2
 
-volatile uint8_t pwm_value = 254;
+typedef struct
+{
+	uint32_t port;
+	uint16_t pin;
+	uint8_t value;
+} pwm_chan_t;
+
+pwm_chan_t pwm_channels[PWM_CHANNEL_COUNT] = {
+	{GPIOC, GPIO13, 0},
+	{GPIOA, GPIO6, 0},
+};
 
 static void clock_setup(void)
 {
 	/* Set STM32 to 72 MHz. */
 	rcc_clock_setup_in_hse_8mhz_out_72mhz();
 
-	/* Enable GPIOC clock. */
-	rcc_periph_clock_enable(RCC_GPIOC);
+	/* Enable GPIO A-C clock. */
 	rcc_periph_clock_enable(RCC_GPIOA);
+	rcc_periph_clock_enable(RCC_GPIOB);
+	rcc_periph_clock_enable(RCC_GPIOC);
 }
 
 static void gpio_setup(void)
 {
-	/* Set GPIO12 (in GPIO port C) to 'output push-pull'. */
-	gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO13);
-	gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, GPIO6);
+	for (int i = 0; i < PWM_CHANNEL_COUNT; ++i)
+	{
+		/* Set PWM output GPIO to 'output push-pull'. */
+		gpio_set_mode(pwm_channels[i].port, GPIO_MODE_OUTPUT_50_MHZ,
+		      GPIO_CNF_OUTPUT_PUSHPULL, pwm_channels[i].pin);
+	}
 }
 
 static void timer_setup(void)
@@ -51,8 +64,6 @@ static void timer_setup(void)
 	 * Please take note that the clock source for STM32 timers
 	 * might not be the raw APB1/APB2 clocks.  In various conditions they
 	 * are doubled.  See the Reference Manual for full details!
-	 * In our case, TIM2 on APB1 is running at double frequency, so this
-	 * sets the prescaler to have the timer run at 5kHz
 	 */
 	timer_set_prescaler(TIM2, ((rcc_apb1_frequency / BASE_PERIOD_LEN) / 25000));
 
@@ -62,9 +73,6 @@ static void timer_setup(void)
 
 	/* count full range, as we'll update compare value continuously */
 	timer_set_period(TIM2, BASE_PERIOD_LEN);
-
-	/* Set the initual output compare value for OC1. */
-	//timer_set_oc_value(TIM2, TIM_OC1, frequency_sequence[frequency_sel++]);
 
 	/* Counter enable. */
 	timer_enable_counter(TIM2);
@@ -84,16 +92,16 @@ void tim2_isr(void)
 
 		pwm_bit++;
 		pwm_bit %= 8;
-		if (!pwm_bit)
-			gpio_toggle(GPIOA, GPIO6);
-
 
 		timer_set_period(TIM2, BASE_PERIOD_LEN << pwm_bit);
 
-		if (pwm_value & (1 << pwm_bit))
-			gpio_clear(GPIOC, GPIO13);
-		else
-			gpio_set(GPIOC, GPIO13);
+		for (int i = 0; i < PWM_CHANNEL_COUNT; ++i) {
+			if (!(pwm_channels[i].value & (1 << pwm_bit))) {
+				gpio_set(pwm_channels[i].port, pwm_channels[i].pin);
+			} else {
+				gpio_clear(pwm_channels[i].port, pwm_channels[i].pin);
+			}
+		}		
 	}
 }
 
@@ -107,7 +115,11 @@ int main(void)
 	while (1) {
 		for (int i = 0; i < 1000000; i++)	/* Wait a bit. */
 			__asm__("nop");
-		pwm_value++;
+		
+		for (int i = 0; i < PWM_CHANNEL_COUNT; ++i)
+		{
+			pwm_channels[i].value++;
+		}
 	}
 
 	return 0;
