@@ -54,7 +54,8 @@ pwm_chan_t pwm_channels[] = {
 	{GPIOA, GPIO9,  0},
 	{GPIOA, GPIO10, 0},
 	{GPIOA, GPIO11, 0},
-	{GPIOA, GPIO12, 0},
+	{GPIOB, GPIO3, 0},
+	/* GPIOA12 and A15 are USB pins and have bias voltages, do not use! */ 
 };
 
 #define PWM_CHANNEL_COUNT (sizeof(pwm_channels)/sizeof(*pwm_channels))
@@ -130,7 +131,7 @@ static void timer_setup(void)
 	 * might not be the raw APB1/APB2 clocks.  In various conditions they
 	 * are doubled.  See the Reference Manual for full details!
 	 */
-	timer_set_prescaler(TIM2, ((rcc_apb1_frequency / BASE_PERIOD_LEN) / 25000));
+	timer_set_prescaler(TIM2, ((rcc_apb1_frequency / BASE_PERIOD_LEN) / 200000));
 
 	/* Disable preload. */
 	timer_disable_preload(TIM2);
