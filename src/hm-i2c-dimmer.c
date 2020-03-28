@@ -45,17 +45,27 @@ typedef struct
 } pwm_chan_t;
 
 pwm_chan_t pwm_channels[] = {
-	{GPIOA, GPIO12, 0},
-	{GPIOB, GPIO13, 0},
-	{GPIOB, GPIO14, 0},
-	{GPIOB, GPIO15, 0},
+	{GPIOA, GPIO8, 0}, /* T1C1, PWM01 */
+	{GPIOA, GPIO9, 0}, /* T1C2, PWM02 */
+	{GPIOA, GPIO10,0}, /* T1C3, PWM03 */
+	{GPIOA, GPIO11,0}, /* T1C4, PWM04 */
 
-	{GPIOA, GPIO8,  0},
-	{GPIOA, GPIO9,  0},
-	{GPIOA, GPIO10, 0},
-	{GPIOA, GPIO11, 0},
-	{GPIOB, GPIO3, 0},
-	/* GPIOA12 and A15 are USB pins and have bias voltages, do not use! */ 
+	{GPIOA, GPIO0, 0}, /* T2C1, PWM05 */
+	{GPIOA, GPIO1, 0}, /* T2C2, PWM06 */
+	{GPIOA, GPIO2, 0}, /* T2C3, PWM07 */
+	{GPIOA, GPIO3, 0}, /* T2C4, PWM08 */
+
+	{GPIOA, GPIO6, 0}, /* T3C1, PWM09 */
+	{GPIOA, GPIO7, 0}, /* T3C2, PWM10 */
+	{GPIOB, GPIO0, 0}, /* T3C3, PWM11 */
+	{GPIOB, GPIO1, 0}, /* T3C4, PWM12 */
+
+	{GPIOB, GPIO6, 0}, /* T4C1, PWM13 */
+	{GPIOB, GPIO7, 0}, /* T4C2, PWM14 */
+	{GPIOB, GPIO8, 0}, /* T4C3, PWM15 */
+	{GPIOB, GPIO9, 0}, /* T4C4, PWM16 */
+
+	/* GPIOA12 and A15 are special pins and have bias voltages, do not use! */ 
 };
 
 #define PWM_CHANNEL_COUNT (sizeof(pwm_channels)/sizeof(*pwm_channels))
