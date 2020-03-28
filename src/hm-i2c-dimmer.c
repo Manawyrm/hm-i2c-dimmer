@@ -45,9 +45,9 @@ typedef struct
 } pwm_chan_t;
 
 pwm_chan_t pwm_channels[] = {
-	{GPIOA, GPIO12, 255},
-	{GPIOB, GPIO13, 255},
-	{GPIOB, GPIO14, 255},
+	{GPIOA, GPIO12, 0},
+	{GPIOB, GPIO13, 0},
+	{GPIOB, GPIO14, 0},
 	{GPIOB, GPIO15, 0},
 
 	{GPIOA, GPIO8,  0},
