@@ -45,9 +45,9 @@ typedef struct
 } pwm_chan_t;
 
 pwm_chan_t pwm_channels[] = {
-	{GPIOB, GPIO12, 0},
-	{GPIOB, GPIO13, 0},
-	{GPIOB, GPIO14, 0},
+	{GPIOA, GPIO12, 255},
+	{GPIOB, GPIO13, 255},
+	{GPIOB, GPIO14, 255},
 	{GPIOB, GPIO15, 0},
 
 	{GPIOA, GPIO8,  0},
@@ -62,23 +62,23 @@ pwm_chan_t pwm_channels[] = {
 
 static void i2c_slave_init(uint8_t slave_address)
 {
-	nvic_enable_irq(NVIC_I2C1_EV_IRQ);
+	nvic_enable_irq(NVIC_I2C2_EV_IRQ);
 
 	/* Configure I2C GPIO pins */
 	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN,
-			 GPIO_I2C1_SDA); /* PB7 */ 
+			 GPIO_I2C2_SDA); 
 	gpio_set_mode(GPIOB, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_OPENDRAIN,
-			 GPIO_I2C1_SCL); /* PB6 */ 
+			 GPIO_I2C2_SCL);
 
-	i2c_reset(I2C1);	
-	i2c_peripheral_disable(I2C1);
+	i2c_reset(I2C2);	
+	i2c_peripheral_disable(I2C2);
 
-	i2c_set_speed(I2C1, i2c_speed_sm_100k, I2C_CR2_FREQ_36MHZ);
-	i2c_set_own_7bit_slave_address(I2C1, slave_address);
-	i2c_enable_interrupt(I2C1, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN);
-	i2c_peripheral_enable(I2C1);
+	i2c_set_speed(I2C2, i2c_speed_sm_100k, I2C_CR2_FREQ_36MHZ);
+	i2c_set_own_7bit_slave_address(I2C2, slave_address);
+	i2c_enable_interrupt(I2C2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN);
+	i2c_peripheral_enable(I2C2);
 
-	i2c_enable_ack(I2C1);
+	i2c_enable_ack(I2C2);
 }
 
 static void clock_setup(void)
@@ -92,7 +92,8 @@ static void clock_setup(void)
 	rcc_periph_clock_enable(RCC_GPIOC);
 
 	/* Enable I2C clock. */
-	rcc_periph_clock_enable(RCC_I2C1);
+	rcc_periph_clock_enable(RCC_I2C2);
+	rcc_periph_clock_enable(RCC_AFIO);
 }
 
 static void gpio_setup(void)
@@ -171,18 +172,18 @@ void tim2_isr(void)
 	}
 }
 
-void i2c1_ev_isr(void)
+void i2c2_ev_isr(void)
 {
 	uint32_t sr1, sr2;
 
-	sr1 = I2C_SR1(I2C1);
+	sr1 = I2C_SR1(I2C2);
 
 	/* Address matched (Slave) */
 	if (sr1 & I2C_SR1_ADDR)
 	{
 		/* Clear the ADDR sequence by reading SR2. */
 		i2c_state = I2C_START; 
-		sr2 = I2C_SR2(I2C1);
+		sr2 = I2C_SR2(I2C2);
 		(void) sr2;
 	}
 	/* Receive buffer not empty */
@@ -191,7 +192,7 @@ void i2c1_ev_isr(void)
 		/* Read register address */
 		if (i2c_state == I2C_START)
 		{
-			uint8_t tmp = i2c_get_data(I2C1);
+			uint8_t tmp = i2c_get_data(I2C2);
 			if (tmp < PWM_CHANNEL_COUNT)
 			{
 				i2c_register = tmp; 
@@ -204,12 +205,12 @@ void i2c1_ev_isr(void)
 		}
 		else if (i2c_state == I2C_REGISTER_SET)
 		{
-			pwm_channels[i2c_register].value = gamma8[i2c_get_data(I2C1)];
+			pwm_channels[i2c_register].value = gamma8[i2c_get_data(I2C2)];
 		} 
 		else
 		{
 			/* discard data */
-			i2c_get_data(I2C1);
+			i2c_get_data(I2C2);
 		}
 	}
 	/* Transmit buffer empty & Data byte transfer not finished */
@@ -217,7 +218,7 @@ void i2c1_ev_isr(void)
 	{
 		if (i2c_state == I2C_START)
 		{
-			i2c_send_data(I2C1, pwm_channels[i2c_register].value);
+			i2c_send_data(I2C2, pwm_channels[i2c_register].value);
 		}
 	}
 	/* 
@@ -226,13 +227,13 @@ void i2c1_ev_isr(void)
 	 */
 	else if (sr1 & I2C_SR1_STOPF)
 	{
-		i2c_peripheral_enable(I2C1);
+		i2c_peripheral_enable(I2C2);
 		i2c_state = I2C_STOP;
 	}
 	/* this event happens when slave is in transmit mode at the end of communication */
 	else if (sr1 & I2C_SR1_AF)
 	{
-		I2C_SR1(I2C1) &= ~(I2C_SR1_AF);
+		I2C_SR1(I2C2) &= ~(I2C_SR1_AF);
 	}
 }
 
