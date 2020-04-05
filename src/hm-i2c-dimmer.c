@@ -20,6 +20,7 @@
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/timer.h>
 #include <libopencm3/stm32/i2c.h>
+#include <stdlib.h>
 
 #include "gamma.h"
 
@@ -41,30 +42,31 @@ typedef struct
 {
 	uint32_t port;
 	uint16_t pin;
+	unsigned timer;
+	int oc;
 	uint8_t value;
 } pwm_chan_t;
 
 pwm_chan_t pwm_channels[] = {
-	{GPIOA, GPIO8, 0}, /* T1C1, PWM01 */
-	{GPIOA, GPIO9, 0}, /* T1C2, PWM02 */
-	{GPIOA, GPIO10,0}, /* T1C3, PWM03 */
-	{GPIOA, GPIO11,0}, /* T1C4, PWM04 */
+	{GPIOA, GPIO_TIM1_CH1, TIM1, TIM_OC1, 10},
+	{GPIOA, GPIO_TIM1_CH2, TIM1, TIM_OC2, 100},
+	{GPIOA, GPIO_TIM1_CH3, TIM1, TIM_OC3, 150},
+	{GPIOA, GPIO_TIM1_CH4, TIM1, TIM_OC4, 200},
 
-	{GPIOA, GPIO0, 0}, /* T2C1, PWM05 */
-	{GPIOA, GPIO1, 0}, /* T2C2, PWM06 */
-	{GPIOA, GPIO2, 0}, /* T2C3, PWM07 */
-	{GPIOA, GPIO3, 0}, /* T2C4, PWM08 */
+	{GPIOA, GPIO_TIM2_CH1_ETR, TIM2, TIM_OC1, 10},
+	{GPIOA, GPIO_TIM2_CH2, TIM2, TIM_OC2, 100},
+	{GPIOA, GPIO_TIM2_CH3, TIM2, TIM_OC3, 150},
+	{GPIOA, GPIO_TIM2_CH4, TIM2, TIM_OC4, 200},
 
-	{GPIOA, GPIO6, 0}, /* T3C1, PWM09 */
-	{GPIOA, GPIO7, 0}, /* T3C2, PWM10 */
-	{GPIOB, GPIO0, 0}, /* T3C3, PWM11 */
-	{GPIOB, GPIO1, 0}, /* T3C4, PWM12 */
+	{GPIOA, GPIO_TIM3_CH1, TIM3, TIM_OC1, 10},
+	{GPIOA, GPIO_TIM3_CH2, TIM3, TIM_OC2, 100},
+	{GPIOB, GPIO_TIM3_CH3, TIM3, TIM_OC3, 150},
+	{GPIOB, GPIO_TIM3_CH4, TIM3, TIM_OC4, 200},
 
-	{GPIOB, GPIO6, 0}, /* T4C1, PWM13 */
-	{GPIOB, GPIO7, 0}, /* T4C2, PWM14 */
-	{GPIOB, GPIO8, 0}, /* T4C3, PWM15 */
-	{GPIOB, GPIO9, 0}, /* T4C4, PWM16 */
-
+	{GPIOB, GPIO_TIM4_CH1, TIM4, TIM_OC1, 10},
+	{GPIOB, GPIO_TIM4_CH2, TIM4, TIM_OC2, 100},
+	{GPIOB, GPIO_TIM4_CH3, TIM4, TIM_OC3, 150},
+	{GPIOB, GPIO_TIM4_CH4, TIM4, TIM_OC4, 200},
 	/* GPIOA12 and A15 are special pins and have bias voltages, do not use! */ 
 };
 
@@ -104,28 +106,28 @@ static void clock_setup(void)
 	/* Enable I2C clock. */
 	rcc_periph_clock_enable(RCC_I2C2);
 	rcc_periph_clock_enable(RCC_AFIO);
+
+	/* Enable timer 1-4 clock. */
+	rcc_periph_clock_enable(RCC_TIM1); 
+	rcc_periph_clock_enable(RCC_TIM2); 
+	rcc_periph_clock_enable(RCC_TIM3); 
+	rcc_periph_clock_enable(RCC_TIM4); 
 }
 
 static void gpio_setup(void)
 {
 	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i)
 	{
-		/* Set PWM output GPIO to 'output push-pull'. */
+		/* Set PWM output GPIO to 'alternate function output push-pull'. */
 		gpio_set_mode(pwm_channels[i].port, GPIO_MODE_OUTPUT_50_MHZ,
-		      GPIO_CNF_OUTPUT_PUSHPULL, pwm_channels[i].pin);
+		      GPIO_CNF_OUTPUT_ALTFN_PUSHPULL, pwm_channels[i].pin);
 	}
 }
 
-static void timer_setup(void)
+static void single_timer_setup(unsigned timer_peripheral, uint32_t reset_peripheral)
 {
-	/* Enable TIM2 clock. */
-	rcc_periph_clock_enable(RCC_TIM2);
-
-	/* Enable TIM2 interrupt. */
-	nvic_enable_irq(NVIC_TIM2_IRQ);
-
-	/* Reset TIM2 peripheral to defaults. */
-	rcc_periph_reset_pulse(RST_TIM2);
+	//nvic_enable_irq(NVIC_TIM2_IRQ);
+	rcc_periph_reset_pulse(reset_peripheral);
 
 	/* Timer global mode:
 	 * - No divider
@@ -134,52 +136,35 @@ static void timer_setup(void)
 	 * (These are actually default values after reset above, so this call
 	 * is strictly unnecessary, but demos the api for alternative settings)
 	 */
-	timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT,
+	timer_set_mode(timer_peripheral, TIM_CR1_CKD_CK_INT,
 		TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 
-	/*
-	 * Please take note that the clock source for STM32 timers
-	 * might not be the raw APB1/APB2 clocks.  In various conditions they
-	 * are doubled.  See the Reference Manual for full details!
-	 */
-	timer_set_prescaler(TIM2, ((rcc_apb1_frequency / BASE_PERIOD_LEN) / 200000));
-
-	/* Disable preload. */
-	timer_disable_preload(TIM2);
-	timer_continuous_mode(TIM2);
+	timer_set_prescaler(timer_peripheral, 2);
+	timer_disable_preload(timer_peripheral);
+	timer_continuous_mode(timer_peripheral);
 
 	/* count full range, as we'll update compare value continuously */
-	timer_set_period(TIM2, BASE_PERIOD_LEN);
+	timer_set_period(timer_peripheral, 255);
 
-	/* Counter enable. */
-	timer_enable_counter(TIM2);
+	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i)
+	{
+		if (pwm_channels[i].timer == timer_peripheral)
+		{
+			timer_set_oc_mode(pwm_channels[i].timer, pwm_channels[i].oc, TIM_OCM_PWM1);
+			timer_set_oc_value(pwm_channels[i].timer, pwm_channels[i].oc, pwm_channels[i].value);
+			timer_enable_oc_output(pwm_channels[i].timer, pwm_channels[i].oc);
+		}
+	}
 
-	/* Enable Channel 1 compare interrupt to recalculate compare values */
-	timer_enable_irq(TIM2, TIM_DIER_CC1IE);
+	timer_enable_counter(timer_peripheral);
 }
 
-volatile uint8_t pwm_bit = 0;
-
-void tim2_isr(void)
+static void timer_setup(void)
 {
-	if (timer_get_flag(TIM2, TIM_SR_CC1IF))
-	{
-		/* Clear compare interrupt flag. */
-		timer_clear_flag(TIM2, TIM_SR_CC1IF);
-
-		pwm_bit++;
-		pwm_bit %= 8;
-
-		timer_set_period(TIM2, BASE_PERIOD_LEN << pwm_bit);
-
-		for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i) {
-			if (pwm_channels[i].value & (1 << pwm_bit)) {
-				gpio_set(pwm_channels[i].port, pwm_channels[i].pin);
-			} else {
-				gpio_clear(pwm_channels[i].port, pwm_channels[i].pin);
-			}
-		}		
-	}
+	single_timer_setup(TIM1, RST_TIM1);
+	single_timer_setup(TIM2, RST_TIM2);
+	single_timer_setup(TIM3, RST_TIM3);
+	single_timer_setup(TIM4, RST_TIM4);
 }
 
 void i2c2_ev_isr(void)
@@ -253,6 +238,7 @@ int main(void)
 	gpio_setup();
 	timer_setup();
 	i2c_slave_init(I2C_ADDRESS);
+	srand(1234);
 
 	while (1)
 	{
