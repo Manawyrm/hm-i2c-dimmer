@@ -44,33 +44,38 @@ typedef struct
 	uint16_t pin;
 	unsigned timer;
 	int oc;
-	uint8_t value;
+	uint16_t value;
 } pwm_chan_t;
 
 pwm_chan_t pwm_channels[] = {
-	{GPIOA, GPIO_TIM1_CH1, TIM1, TIM_OC1, 10},
-	{GPIOA, GPIO_TIM1_CH2, TIM1, TIM_OC2, 100},
-	{GPIOA, GPIO_TIM1_CH3, TIM1, TIM_OC3, 150},
-	{GPIOA, GPIO_TIM1_CH4, TIM1, TIM_OC4, 200},
+	{GPIOA, GPIO_TIM1_CH1, TIM1, TIM_OC1, 0},
+	{GPIOA, GPIO_TIM1_CH2, TIM1, TIM_OC2, 0},
+	{GPIOA, GPIO_TIM1_CH3, TIM1, TIM_OC3, 0},
+	{GPIOA, GPIO_TIM1_CH4, TIM1, TIM_OC4, 0},
 
-	{GPIOA, GPIO_TIM2_CH1_ETR, TIM2, TIM_OC1, 10},
-	{GPIOA, GPIO_TIM2_CH2, TIM2, TIM_OC2, 100},
-	{GPIOA, GPIO_TIM2_CH3, TIM2, TIM_OC3, 150},
-	{GPIOA, GPIO_TIM2_CH4, TIM2, TIM_OC4, 200},
+	{GPIOA, GPIO_TIM2_CH1_ETR, TIM2, TIM_OC1, 0},
+	{GPIOA, GPIO_TIM2_CH2, TIM2, TIM_OC2, 0},
+	{GPIOA, GPIO_TIM2_CH3, TIM2, TIM_OC3, 0},
+	{GPIOA, GPIO_TIM2_CH4, TIM2, TIM_OC4, 0},
 
-	{GPIOA, GPIO_TIM3_CH1, TIM3, TIM_OC1, 10},
-	{GPIOA, GPIO_TIM3_CH2, TIM3, TIM_OC2, 100},
-	{GPIOB, GPIO_TIM3_CH3, TIM3, TIM_OC3, 150},
-	{GPIOB, GPIO_TIM3_CH4, TIM3, TIM_OC4, 200},
+	{GPIOA, GPIO_TIM3_CH1, TIM3, TIM_OC1, 0},
+	{GPIOA, GPIO_TIM3_CH2, TIM3, TIM_OC2, 0},
+	{GPIOB, GPIO_TIM3_CH3, TIM3, TIM_OC3, 0},
+	{GPIOB, GPIO_TIM3_CH4, TIM3, TIM_OC4, 0},
 
-	{GPIOB, GPIO_TIM4_CH1, TIM4, TIM_OC1, 10},
-	{GPIOB, GPIO_TIM4_CH2, TIM4, TIM_OC2, 100},
-	{GPIOB, GPIO_TIM4_CH3, TIM4, TIM_OC3, 150},
-	{GPIOB, GPIO_TIM4_CH4, TIM4, TIM_OC4, 200},
+	{GPIOB, GPIO_TIM4_CH1, TIM4, TIM_OC1, 0},
+	{GPIOB, GPIO_TIM4_CH2, TIM4, TIM_OC2, 0},
+	{GPIOB, GPIO_TIM4_CH3, TIM4, TIM_OC3, 0},
+	{GPIOB, GPIO_TIM4_CH4, TIM4, TIM_OC4, 0},
 	/* GPIOA12 and A15 are special pins and have bias voltages, do not use! */ 
 };
 
 #define PWM_CHANNEL_COUNT (sizeof(pwm_channels)/sizeof(*pwm_channels))
+
+long map(long x, long in_min, long in_max, long out_min, long out_max)
+{
+	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
 static void i2c_slave_init(uint8_t slave_address)
 {
@@ -116,7 +121,7 @@ static void clock_setup(void)
 
 static void gpio_setup(void)
 {
-	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i)
+	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; i++)
 	{
 		/* Set PWM output GPIO to 'alternate function output push-pull'. */
 		gpio_set_mode(pwm_channels[i].port, GPIO_MODE_OUTPUT_50_MHZ,
@@ -144,14 +149,19 @@ static void single_timer_setup(unsigned timer_peripheral, uint32_t reset_periphe
 	timer_continuous_mode(timer_peripheral);
 
 	/* count full range, as we'll update compare value continuously */
-	timer_set_period(timer_peripheral, 255);
+	timer_set_period(timer_peripheral, 4094);
 
-	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; ++i)
+	if (timer_peripheral == TIM1)
+	{
+		timer_enable_break_automatic_output(TIM1);
+	}
+
+	for (unsigned i = 0; i < PWM_CHANNEL_COUNT; i++)
 	{
 		if (pwm_channels[i].timer == timer_peripheral)
 		{
 			timer_set_oc_mode(pwm_channels[i].timer, pwm_channels[i].oc, TIM_OCM_PWM1);
-			timer_set_oc_value(pwm_channels[i].timer, pwm_channels[i].oc, pwm_channels[i].value);
+			timer_set_oc_value(pwm_channels[i].timer, pwm_channels[i].oc, map(pwm_channels[i].value, 0, 255, 0, 4095));
 			timer_enable_oc_output(pwm_channels[i].timer, pwm_channels[i].oc);
 		}
 	}
@@ -201,6 +211,7 @@ void i2c2_ev_isr(void)
 		else if (i2c_state == I2C_REGISTER_SET)
 		{
 			pwm_channels[i2c_register].value = gamma8[i2c_get_data(I2C2)];
+			timer_set_oc_value(pwm_channels[i2c_register].timer, pwm_channels[i2c_register].oc, map(pwm_channels[i2c_register].value, 0, 255, 0, 4095));
 		} 
 		else
 		{
